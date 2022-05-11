@@ -9,9 +9,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	policyv1 "k8s.io/api/policy/v1"
+	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
@@ -23,6 +24,7 @@ import (
 
 var (
 	blockingThreshold int16
+	outputFormatTmp   string
 )
 
 // lookupCmd represents the lookup command
@@ -33,11 +35,11 @@ var lookupCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 
 		var (
-			//targetPDB string
-			pdbList        *policyv1.PodDisruptionBudgetList
+			pdbList        *policyv1beta1.PodDisruptionBudgetList
 			pods           *corev1.PodList
 			pdbListOptions metav1.ListOptions
 			pdbOutput      resources.PDBOutput
+			outputFormat   string
 		)
 
 		// Setup the Kubernetes Client
@@ -57,25 +59,26 @@ var lookupCmd = &cobra.Command{
 		}
 
 		// Get a list of PDB resources
-		pdbList, err = client.PolicyV1().PodDisruptionBudgets(namespace).List(context.TODO(), pdbListOptions)
+		pdbList, err = client.PolicyV1beta1().PodDisruptionBudgets(namespace).List(context.TODO(), pdbListOptions)
 		if err != nil {
-			fmt.Println("ERROR: Unable to lookup Pod Disruption Budget (PDB) %q")
+			fmt.Printf("ERROR: Unable to lookup Pod Disruption Budgets (PDB's): \n%v\n", err)
 			os.Exit(1)
 		}
 
-		// Start Printing of output with Headers
-		w := printers.GetNewTabWriter(os.Stdout)
-		defer w.Flush()
-
-		// Set to-json from flag
-		toJson, _ := cmd.Flags().GetBool("json")
+		// Set output format
+		outputFormat = strings.ToLower(outputFormatTmp)
 
 		// Set show-no-pods flag
 		showNoPods, _ := cmd.Flags().GetBool("show-no-pods")
 
 		// Skip printing headers if flag is set
 		noHeaders, _ := cmd.Flags().GetBool("no-headers")
-		if !(noHeaders || toJson) {
+
+		// Start Printing of output with Headers
+		w := printers.GetNewTabWriter(os.Stdout)
+		defer w.Flush()
+
+		if !noHeaders && outputFormat != "json" {
 			fmt.Fprintln(w, "NAME\tNAMESPACE\tMATCHING PODS\tALLOWED DISRUPTIONS\tSELECTORS\t")
 		}
 
@@ -98,6 +101,10 @@ var lookupCmd = &cobra.Command{
 
 			// Get a list of Pods that match the Selectors from the PDB
 			pods, err = client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
+			if err != nil {
+				fmt.Printf("ERROR: Unable to lookup Pods: \n%v\n", err)
+				os.Exit(1)
+			}
 
 			// Check if any pods matches the Selectors from the PDB, skip iteration if not
 			if len(pods.Items) < 1 {
@@ -120,7 +127,7 @@ var lookupCmd = &cobra.Command{
 
 		}
 
-		if toJson {
+		if outputFormat == "json" {
 
 			output, err := json.MarshalIndent(pdbOutput, "", "    ")
 			if err != nil {
@@ -150,8 +157,8 @@ func init() {
 	// lookupCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 	lookupCmd.Flags().BoolP("blocking", "b", false, "Filter for blocking PDB's only (Default: False)")
 	lookupCmd.Flags().Int16VarP(&blockingThreshold, "blocking-threshold", "t", 0, "Set the threshold for blocking PDB's. This number is the upper bound for \"Allowed Disruptions\" for a PDB (Default: 0)")
-	lookupCmd.Flags().Bool("json", false, "Output in JSON format (Default: False)")
 	lookupCmd.Flags().Bool("no-headers", false, "Output without column headers (Default: False)")
 	lookupCmd.Flags().Bool("show-no-pods", false, "Output PDB's that don't match any pods (Default: False)")
+	lookupCmd.Flags().StringVarP(&outputFormatTmp, "output", "o", "", "Specify the output format. One of: json")
 
 }
