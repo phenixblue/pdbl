@@ -25,12 +25,18 @@ builds:
     goarch:
       - amd64
       - arm64
-      - ppc64le
+    #  - ppc64le
 
     # List of combinations of GOOS + GOARCH + GOARM to ignore.
     # Default is empty.
-    ignore:
-      - goos: darwin
-        goarch: ppc64le
-      - goos: windows
-        goarch: ppc64le
+    #ignore:
+    #  - goos: darwin
+    #    goarch: ppc64le
+    #  - goos: windows
+    #    goarch: ppc64le
+release:
+  # If set to auto, will mark the release as not ready for production
+  # in case there is an indicator for this in the tag e.g. v1.0.0-rc1
+  # If set to true, will mark the release as not ready for production.
+  # Default is false.
+  prerelease: auto
