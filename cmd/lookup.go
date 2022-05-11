@@ -70,10 +70,13 @@ var lookupCmd = &cobra.Command{
 		// Set to-json from flag
 		toJson, _ := cmd.Flags().GetBool("json")
 
+		// Set show-no-pods flag
+		showNoPods, _ := cmd.Flags().GetBool("show-no-pods")
+
 		// Skip printing headers if flag is set
 		noHeaders, _ := cmd.Flags().GetBool("no-headers")
 		if !(noHeaders || toJson) {
-			fmt.Fprintln(w, "NAMESPACE\tPOD\tPDB\tALLOWED DISRUPTIONS\tSELECTORS\t")
+			fmt.Fprintln(w, "NAME\tNAMESPACE\tMATCHING PODS\tALLOWED DISRUPTIONS\tSELECTORS\t")
 		}
 
 		// Loop through PDB's
@@ -91,27 +94,25 @@ var lookupCmd = &cobra.Command{
 
 			// Set LabelSelectors for pods to Selectors value from PDB
 			pdbSelectors := pdb.Spec.Selector.MatchLabels
-			labels := labels.Set(pdbSelectors).String()
+			pdblabels := labels.Set(pdbSelectors).String()
 
 			// Get a list of Pods that match the Selectors from the PDB
-			pods, err = client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: labels})
+			pods, err = client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
 
 			// Check if any pods matches the Selectors from the PDB, skip iteration if not
 			if len(pods.Items) < 1 {
-				continue
+				if !showNoPods {
+					continue
+				}
 			}
 
 			currPDB.Name = pdb.Name
 			currPDB.Namespace = pdb.Namespace
-			currPDB.Selectors = pdbSelectors
+			currPDB.Selectors = pdblabels
 			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
 
 			// Loop through Pod list and print information for output
 			for _, pod := range pods.Items {
-				if !toJson {
-					fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", pod.Namespace, pod.Name, pdb.Name, pdb.Status.DisruptionsAllowed, labels)
-				}
-
 				currPDB.Pods = append(currPDB.Pods, pod.Name)
 			}
 
@@ -126,6 +127,10 @@ var lookupCmd = &cobra.Command{
 				fmt.Printf("ERROR: Problems marshaling otuput to JSON: %v\n", err)
 			}
 			fmt.Printf("%s\n", output)
+		} else {
+			for _, pdb := range pdbOutput.PDBs {
+				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, len(pdb.Pods), pdb.DisruptionsAllowed, pdb.Selectors)
+			}
 		}
 
 	},
@@ -143,9 +148,10 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// lookupCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	lookupCmd.Flags().BoolP("blocking", "b", false, "Filter for blocking PDB's only")
+	lookupCmd.Flags().BoolP("blocking", "b", false, "Filter for blocking PDB's only (Default: False)")
 	lookupCmd.Flags().Int16VarP(&blockingThreshold, "blocking-threshold", "t", 0, "Set the threshold for blocking PDB's. This number is the upper bound for \"Allowed Disruptions\" for a PDB (Default: 0)")
-	lookupCmd.Flags().Bool("json", false, "Output in JSON format")
-	lookupCmd.Flags().Bool("no-headers", false, "Output without column headers")
+	lookupCmd.Flags().Bool("json", false, "Output in JSON format (Default: False)")
+	lookupCmd.Flags().Bool("no-headers", false, "Output without column headers (Default: False)")
+	lookupCmd.Flags().Bool("show-no-pods", false, "Output PDB's that don't match any pods (Default: False)")
 
 }

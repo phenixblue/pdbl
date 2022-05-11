@@ -21,9 +21,9 @@ type PDBOutput struct {
 }
 
 type PDB struct {
-	Name               string            `json:"name"`
-	Namespace          string            `json:"namespace"`
-	Pods               []string          `json:"pods"`
-	Selectors          map[string]string `json:"selectors"`
-	DisruptionsAllowed int               `json:"disruptionsAllowed"`
+	Name               string   `json:"name"`
+	Namespace          string   `json:"namespace"`
+	Pods               []string `json:"pods"`
+	Selectors          string   `json:"selectors"`
+	DisruptionsAllowed int      `json:"disruptionsAllowed"`
 }
