@@ -6,10 +6,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -17,6 +18,11 @@ import (
 	"github.com/spf13/cobra"
 	"twr.dev/pdbl/pkg/kube"
 	"twr.dev/pdbl/pkg/printers"
+	"twr.dev/pdbl/pkg/resources"
+)
+
+var (
+	blockingThreshold int16
 )
 
 // lookupCmd represents the lookup command
@@ -29,8 +35,9 @@ var lookupCmd = &cobra.Command{
 		var (
 			//targetPDB string
 			pdbList        *policyv1.PodDisruptionBudgetList
-			pods           *v1.PodList
+			pods           *corev1.PodList
 			pdbListOptions metav1.ListOptions
+			pdbOutput      resources.PDBOutput
 		)
 
 		// Setup the Kubernetes Client
@@ -59,9 +66,28 @@ var lookupCmd = &cobra.Command{
 		// Start Printing of output with Headers
 		w := printers.GetNewTabWriter(os.Stdout)
 		defer w.Flush()
-		fmt.Fprintln(w, "NAMESPACE\tNAME\tPDB\tALLOWED DISRUPTIONS\tSELECTORS\t")
 
+		// Set to-json from flag
+		toJson, _ := cmd.Flags().GetBool("json")
+
+		// Skip printing headers if flag is set
+		noHeaders, _ := cmd.Flags().GetBool("no-headers")
+		if !(noHeaders || toJson) {
+			fmt.Fprintln(w, "NAMESPACE\tPOD\tPDB\tALLOWED DISRUPTIONS\tSELECTORS\t")
+		}
+
+		// Loop through PDB's
 		for _, pdb := range pdbList.Items {
+
+			var currPDB resources.PDB
+
+			// Check if Blocking Filter is specified. If it is, only output PDB's that meet the Blocking Threshold
+			blockingFilter, _ := cmd.Flags().GetBool("blocking")
+			if blockingFilter {
+				if pdb.Status.DisruptionsAllowed > int32(blockingThreshold) {
+					continue
+				}
+			}
 
 			// Set LabelSelectors for pods to Selectors value from PDB
 			pdbSelectors := pdb.Spec.Selector.MatchLabels
@@ -75,11 +101,31 @@ var lookupCmd = &cobra.Command{
 				continue
 			}
 
+			currPDB.Name = pdb.Name
+			currPDB.Namespace = pdb.Namespace
+			currPDB.Selectors = pdbSelectors
+			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
+
 			// Loop through Pod list and print information for output
 			for _, pod := range pods.Items {
-				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", pod.Namespace, pod.Name, pdb.Name, pdb.Status.DisruptionsAllowed, labels)
+				if !toJson {
+					fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", pod.Namespace, pod.Name, pdb.Name, pdb.Status.DisruptionsAllowed, labels)
+				}
+
+				currPDB.Pods = append(currPDB.Pods, pod.Name)
 			}
 
+			pdbOutput.PDBs = append(pdbOutput.PDBs, currPDB)
+
+		}
+
+		if toJson {
+
+			output, err := json.MarshalIndent(pdbOutput, "", "    ")
+			if err != nil {
+				fmt.Printf("ERROR: Problems marshaling otuput to JSON: %v\n", err)
+			}
+			fmt.Printf("%s\n", output)
 		}
 
 	},
@@ -97,4 +143,9 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// lookupCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	lookupCmd.Flags().BoolP("blocking", "b", false, "Filter for blocking PDB's only")
+	lookupCmd.Flags().Int16VarP(&blockingThreshold, "blocking-threshold", "t", 0, "Set the threshold for blocking PDB's. This number is the upper bound for \"Allowed Disruptions\" for a PDB (Default: 0)")
+	lookupCmd.Flags().Bool("json", false, "Output in JSON format")
+	lookupCmd.Flags().Bool("no-headers", false, "Output without column headers")
+
 }
