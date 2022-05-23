@@ -26,4 +26,8 @@ type PDB struct {
 	Pods               []string `json:"pods"`
 	Selectors          string   `json:"selectors"`
 	DisruptionsAllowed int      `json:"disruptionsAllowed"`
+	NewMinAvailable    string   `json:"newMinAvailable"`
+	NewMaxUnavailable  string   `json:"newMaxUnavailable"`
+	OldMinAvailable    string   `json:"oldMinAvailable"`
+	OldMaxUnavailable  string   `json:"oldMaxUnavailable"`
 }

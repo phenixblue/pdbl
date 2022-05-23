@@ -11,7 +11,6 @@ import (
 	"os"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -36,7 +35,6 @@ var lookupCmd = &cobra.Command{
 
 		var (
 			pdbList        *policyv1beta1.PodDisruptionBudgetList
-			pods           *corev1.PodList
 			pdbListOptions metav1.ListOptions
 			pdbOutput      resources.PDBOutput
 			outputFormat   string
@@ -87,9 +85,13 @@ var lookupCmd = &cobra.Command{
 
 			var currPDB resources.PDB
 
-			// Check if Blocking Filter is specified. If it is, only output PDB's that meet the Blocking Threshold
-			blockingFilter, _ := cmd.Flags().GetBool("blocking")
-			if blockingFilter {
+			// Check if No-Blocking Filter is specified. If it is, output all PDB's whether they're blocking or not
+			noBlockingFilter, err := cmd.Flags().GetBool("no-blocking")
+			if err != nil {
+				fmt.Printf("ERROR: Unable to read argument passed to \"no-blocking\" flag: %v", err)
+				os.Exit(1)
+			}
+			if !noBlockingFilter {
 				if pdb.Status.DisruptionsAllowed > int32(blockingThreshold) {
 					continue
 				}
@@ -100,15 +102,16 @@ var lookupCmd = &cobra.Command{
 			pdblabels := labels.Set(pdbSelectors).String()
 
 			// Get a list of Pods that match the Selectors from the PDB
-			pods, err = client.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
+			pods, err := client.CoreV1().Pods(pdb.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
 			if err != nil {
 				fmt.Printf("ERROR: Unable to lookup Pods: \n%v\n", err)
 				os.Exit(1)
 			}
 
-			// Check if any pods matches the Selectors from the PDB, skip iteration if not
+			// Check if any pods match the Selectors from the PDB, skip iteration if not
 			if len(pods.Items) < 1 {
 				if !showNoPods {
+					fmt.Printf("No pods match this PDB...it shouldn't print: %v\n", pdb.Name)
 					continue
 				}
 			}
@@ -131,7 +134,7 @@ var lookupCmd = &cobra.Command{
 
 			output, err := json.MarshalIndent(pdbOutput, "", "    ")
 			if err != nil {
-				fmt.Printf("ERROR: Problems marshaling otuput to JSON: %v\n", err)
+				fmt.Printf("ERROR: Problems marshaling output to JSON: %v\n", err)
 			}
 			fmt.Printf("%s\n", output)
 		} else {
@@ -155,7 +158,7 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// lookupCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-	lookupCmd.Flags().BoolP("blocking", "b", false, "Filter for blocking PDB's only (Default: False)")
+	lookupCmd.Flags().BoolP("no-blocking", "b", false, "Assess all PDB's, not just those that are blocking (Default: False)")
 	lookupCmd.Flags().Int16VarP(&blockingThreshold, "blocking-threshold", "t", 0, "Set the threshold for blocking PDB's. This number is the upper bound for \"Allowed Disruptions\" for a PDB (Default: 0)")
 	lookupCmd.Flags().Bool("no-headers", false, "Output without column headers (Default: False)")
 	lookupCmd.Flags().Bool("show-no-pods", false, "Output PDB's that don't match any pods (Default: False)")
