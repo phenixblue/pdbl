@@ -26,8 +26,9 @@ type PDB struct {
 	Pods               []string `json:"pods"`
 	Selectors          string   `json:"selectors"`
 	DisruptionsAllowed int      `json:"disruptionsAllowed"`
-	NewMinAvailable    string   `json:"newMinAvailable"`
-	NewMaxUnavailable  string   `json:"newMaxUnavailable"`
-	OldMinAvailable    string   `json:"oldMinAvailable"`
-	OldMaxUnavailable  string   `json:"oldMaxUnavailable"`
+	NewMinAvailable    string   `json:"newMinAvailable,omitempty"`
+	NewMaxUnavailable  string   `json:"newMaxUnavailable,omitempty"`
+	OldMinAvailable    string   `json:"oldMinAvailable,omitempty"`
+	OldMaxUnavailable  string   `json:"oldMaxUnavailable,omitempty"`
+	PatchStatus        string   `json:"patchStatus,omitempty"`
 }

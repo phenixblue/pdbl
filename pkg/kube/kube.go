@@ -19,11 +19,13 @@ package kube
 import (
 	"context"
 	"fmt"
+	"os"
 
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/kubectl/pkg/util/term"
 
 	// Import all auth client plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -31,7 +33,7 @@ import (
 )
 
 // CreateKubeClient creates a new kubernetes client interface
-func CreateKubeClient(kubeconfig string, configContext string, warningsEnabled bool) (kubernetes.Interface, error) {
+func CreateKubeClient(kubeconfig string, configContext string, warningsDisabled bool) (kubernetes.Interface, error) {
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
@@ -41,8 +43,19 @@ func CreateKubeClient(kubeconfig string, configContext string, warningsEnabled b
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 	config, err := kubeConfig.ClientConfig()
 
-	if warningsEnabled {
+	// Handle K8s API Server Warnings forwarded to our client
+	if warningsDisabled {
 		config.WarningHandler = rest.NoWarnings{}
+	} else {
+		rest.SetDefaultWarningHandler(
+			rest.NewWarningWriter(os.Stderr, rest.WarningWriterOptions{
+				// only print a given warning the first time we receive it
+				Deduplicate: true,
+				// highlight the output with color when the output supports it
+				Color: term.AllowsColorOutput(os.Stderr),
+			},
+			),
+		)
 	}
 
 	clientset, _ := kubernetes.NewForConfig(config)

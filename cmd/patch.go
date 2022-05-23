@@ -133,10 +133,6 @@ var patchCmd = &cobra.Command{
 			currPDB.Selectors = pdblabels
 			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
 
-			/*
-				Need to check PDB to see if minAvailable or maxUnavailable is used (they're mutually exclusive)
-			*/
-
 			// Assess if this is a no-op run
 			if noop {
 				dryRunOptions = metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}}
@@ -146,6 +142,9 @@ var patchCmd = &cobra.Command{
 				patchStatus = ("configured")
 			}
 
+			currPDB.PatchStatus = patchStatus
+
+			// Check PDB to see if minAvailable or maxUnavailable is used (they're mutually exclusive)
 			if pdb.Spec.MaxUnavailable != nil {
 				currPDB.OldMaxUnavailable = pdb.Spec.MaxUnavailable.StrVal
 				pdb.ObjectMeta.Annotations[PDBLMaxUnavailableAnnotation] = currPDB.OldMaxUnavailable

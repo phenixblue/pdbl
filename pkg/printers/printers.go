@@ -31,3 +31,18 @@ const (
 func GetNewTabWriter(output io.Writer) *tabwriter.Writer {
 	return tabwriter.NewWriter(output, tabwriterMinWidth, tabwriterWidth, tabwriterPadding, tabwriterPadChar, tabwriterFlags)
 }
+
+/*
+
+// GetNewTabWriter returns a tabwriter that translates tabbed columns in input into properly aligned text.
+func GetNewResponsiveWriter(output io.Writer) io.Writer {
+	//return tabwriter.NewWriter(output, tabwriterMinWidth, tabwriterWidth, tabwriterPadding, tabwriterPadChar, tabwriterFlags)
+	return term.NewResponsiveWriter(output)
+}
+
+func GetNewTableWriter() printers.ResourcePrinter {
+	printr := printers.NewTypeSetter(scheme.Scheme).ToPrinter(printers.NewTablePrinter(printers.PrintOptions{}))
+	return printr
+}
+
+*/
