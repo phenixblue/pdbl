@@ -41,7 +41,7 @@ var lookupCmd = &cobra.Command{
 		)
 
 		// Setup the Kubernetes Client
-		client, err := kube.CreateKubeClient(kubeconfig, configContext)
+		client, err := kube.CreateKubeClient(kubeconfig, configContext, noWarnings)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)

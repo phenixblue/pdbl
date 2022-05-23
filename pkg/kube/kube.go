@@ -23,6 +23,7 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 
 	// Import all auth client plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -30,7 +31,7 @@ import (
 )
 
 // CreateKubeClient creates a new kubernetes client interface
-func CreateKubeClient(kubeconfig string, configContext string) (kubernetes.Interface, error) {
+func CreateKubeClient(kubeconfig string, configContext string, warningsEnabled bool) (kubernetes.Interface, error) {
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
@@ -39,6 +40,11 @@ func CreateKubeClient(kubeconfig string, configContext string) (kubernetes.Inter
 
 	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 	config, err := kubeConfig.ClientConfig()
+
+	if warningsEnabled {
+		config.WarningHandler = rest.NoWarnings{}
+	}
+
 	clientset, _ := kubernetes.NewForConfig(config)
 
 	return clientset, err

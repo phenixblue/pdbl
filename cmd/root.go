@@ -29,6 +29,7 @@ var (
 	kubeconfig    string
 	configContext string
 	namespace     string
+	noWarnings    bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -59,6 +60,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&kubeconfig, "kubeconfig", "", "", "Kubernetes configuration file")
 	rootCmd.PersistentFlags().StringVar(&configContext, "context", "", "The name of the kubeconfig context to use")
 	rootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", "", "The Namespace to use when listing Pods")
+	rootCmd.PersistentFlags().BoolVarP(&noWarnings, "no-warnings", "s", false, "If present, silence printing of server-side warnings to stderr")
 
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.

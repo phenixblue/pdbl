@@ -21,7 +21,7 @@ var listCmd = &cobra.Command{
 	Long:  `List the Pod Disruption Budget (PDB) resources`,
 	Run: func(cmd *cobra.Command, args []string) {
 
-		client, err := kube.CreateKubeClient(kubeconfig, configContext)
+		client, err := kube.CreateKubeClient(kubeconfig, configContext, noWarnings)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
