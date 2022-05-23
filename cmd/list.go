@@ -17,8 +17,8 @@ import (
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List the Pod Disruption Bidget (PDB) resources",
-	Long:  `List the Pod Disruption Bidget (PDB) resources`,
+	Short: "List the Pod Disruption Budget (PDB) resources",
+	Long:  `List the Pod Disruption Budget (PDB) resources`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		client, err := kube.CreateKubeClient(kubeconfig, configContext)

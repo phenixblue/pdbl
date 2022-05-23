@@ -30,8 +30,8 @@ var (
 // lookupCmd represents the lookup command
 var lookupCmd = &cobra.Command{
 	Use:   "lookup",
-	Short: "Lookup the pods assocaited with a target Pod Disruption Bidget (PDB) resource",
-	Long:  `Lookup the pods assocaited with a target Pod Disruption Bidget (PDB) resource`,
+	Short: "Lookup the pods associated with a target Pod Disruption Budget (PDB) resource",
+	Long:  `Lookup the pods associated with a target Pod Disruption Budget (PDB) resource`,
 	Run: func(cmd *cobra.Command, args []string) {
 
 		var (
