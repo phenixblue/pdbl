@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"twr.dev/pdbl/pkg/helpers"
 	"twr.dev/pdbl/pkg/kube"
 	"twr.dev/pdbl/pkg/printers"
 	"twr.dev/pdbl/pkg/resources"
@@ -25,7 +26,7 @@ import (
 var (
 	PDBLMaxUnavailableAnnotation = "pdbl.k8s.t-mobile.com/maxUnavailable-original"
 	PDBLMinAvailableAnnotation   = "pdbl.k8s.t-mobile.com/minAvailable-original"
-	noop                         bool
+	dryRun                       bool
 	patchStatus                  string
 )
 
@@ -63,6 +64,12 @@ var patchCmd = &cobra.Command{
 		// Check Command Args passed and update the PDB ListOptions FieldSelector to scope resources listed
 		cmdArgs := args
 		if len(cmdArgs) > 0 && cmdArgs[0] != "" {
+
+			if namespace == "" {
+				fmt.Println("ERROR: You must specify a namespace if you specify a PDB name to patch.")
+				os.Exit(1)
+			}
+
 			targetPDB := cmdArgs[0]
 
 			pdbListOptions.FieldSelector = "metadata.name=" + targetPDB
@@ -90,13 +97,33 @@ var patchCmd = &cobra.Command{
 		defer w.Flush()
 
 		if !noHeaders && outputFormat != "json" {
-			fmt.Fprintln(w, "NAME\tNAMESPACE\tMAX UNAVAILABLE OLD\tMAX UNAVAILABLE NEW\tMIN AVAILABLE OLD\tMIN AVAILABLE NEW\tALLOWED DISRUPTIONS\tPATCH STATUS\t")
+			fmt.Fprintln(w, "NAME\tNAMESPACE\tMAX UNAVAILABLE OLD\tMAX UNAVAILABLE NEW\tMIN AVAILABLE OLD\tMIN AVAILABLE NEW\tNUMBER OF MATCHED PODS\tALLOWED DISRUPTIONS\tPATCH STATUS\t")
 		}
 
 		// Loop through PDB's
 		for _, pdb := range pdbList.Items {
 
 			var currPDB resources.PDB
+
+			// Set LabelSelectors for pods to Selectors value from PDB
+			pdbSelectors := pdb.Spec.Selector.MatchLabels
+			pdblabels := labels.Set(pdbSelectors).String()
+
+			// Assess if this is a no-op run
+			if dryRun {
+				dryRunOptions = metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}}
+				patchStatus = "(dry-run only)"
+			} else {
+				dryRunOptions = metav1.UpdateOptions{}
+				patchStatus = ("configured")
+			}
+
+			// Record current PDB info for use later
+			currPDB.Name = pdb.Name
+			currPDB.Namespace = pdb.Namespace
+			currPDB.Selectors = pdblabels
+			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
+			currPDB.PatchStatus = patchStatus
 
 			// Check if No-Blocking Filter is specified. If it is, output all PDB's whether they're blocking or not
 			noBlockingFilter, err := cmd.Flags().GetBool("no-blocking")
@@ -109,10 +136,6 @@ var patchCmd = &cobra.Command{
 					continue
 				}
 			}
-
-			// Set LabelSelectors for pods to Selectors value from PDB
-			pdbSelectors := pdb.Spec.Selector.MatchLabels
-			pdblabels := labels.Set(pdbSelectors).String()
 
 			// Get a list of Pods that match the Selectors from the PDB
 			pods, err = client.CoreV1().Pods(pdb.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
@@ -128,51 +151,45 @@ var patchCmd = &cobra.Command{
 				}
 			}
 
-			currPDB.Name = pdb.Name
-			currPDB.Namespace = pdb.Namespace
-			currPDB.Selectors = pdblabels
-			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
-
-			// Assess if this is a no-op run
-			if noop {
-				dryRunOptions = metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}}
-				patchStatus = "(dry-run only)"
-			} else {
-				dryRunOptions = metav1.UpdateOptions{}
-				patchStatus = ("configured")
-			}
-
-			currPDB.PatchStatus = patchStatus
-
 			// Check PDB to see if minAvailable or maxUnavailable is used (they're mutually exclusive)
 			if pdb.Spec.MaxUnavailable != nil {
 				currPDB.OldMaxUnavailable = pdb.Spec.MaxUnavailable.StrVal
+				// Set maxUnavailable annotation
 				pdb.ObjectMeta.Annotations[PDBLMaxUnavailableAnnotation] = currPDB.OldMaxUnavailable
 				// Detect an appropriate non-blocking value and update the value
+				helpers.GetTargetPDBValue(currPDB.DisruptionsAllowed, "maxUnavailable", currPDB.OldMaxUnavailable, len(pods.Items))
+				// Define target value
 				value := intstr.FromString("%90")
 				currPDB.NewMaxUnavailable = value.StrVal
 				pdb.Spec.MaxUnavailable = &value
 
+				// Update PDB with newly added/updated annotation/Availability value
 				newPdb, err := client.PolicyV1beta1().PodDisruptionBudgets(pdb.Namespace).Update(context.TODO(), &pdb, dryRunOptions)
 				if err != nil {
 					fmt.Printf("ERROR: Updating PDB \"%v/%v\" failed: %v\n", pdb.Namespace, pdb.Name, err)
 				}
 
+				// Set pdb to newly patched version of existing PDB
 				pdb = *newPdb
 
 			} else if pdb.Spec.MinAvailable != nil {
 				currPDB.OldMinAvailable = pdb.Spec.MinAvailable.StrVal
+				// Set minAvailable annotation
 				pdb.ObjectMeta.Annotations[PDBLMinAvailableAnnotation] = currPDB.OldMinAvailable
 				// Detect an appropriate non-blocking value and update the value
+				helpers.GetTargetPDBValue(currPDB.DisruptionsAllowed, "minAvailable", currPDB.OldMinAvailable, len(pods.Items))
+				// Define target value
 				value := intstr.FromString("1%")
 				currPDB.NewMinAvailable = value.StrVal
 				pdb.Spec.MinAvailable = &value
 
+				// Update PDB with newly added/updated annotation/Availability value
 				newPdb, err := client.PolicyV1beta1().PodDisruptionBudgets(pdb.Namespace).Update(context.TODO(), &pdb, dryRunOptions)
 				if err != nil {
 					fmt.Printf("ERROR: Updating PDB \"%v/%v\" failed: %v\n", pdb.Namespace, pdb.Name, err)
 				}
 
+				// Set pdb to newly patched version of existing PDB
 				pdb = *newPdb
 			}
 
@@ -181,6 +198,7 @@ var patchCmd = &cobra.Command{
 				currPDB.Pods = append(currPDB.Pods, pod.Name)
 			}
 
+			// Append current PDB to list of PDB's we've processed
 			pdbOutput.PDBs = append(pdbOutput.PDBs, currPDB)
 
 		}
@@ -194,7 +212,7 @@ var patchCmd = &cobra.Command{
 			fmt.Printf("%s\n", output)
 		} else {
 			for _, pdb := range pdbOutput.PDBs {
-				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, printPDBAvailValue(pdb.OldMaxUnavailable), printPDBAvailValue(pdb.NewMaxUnavailable), printPDBAvailValue(pdb.OldMinAvailable), printPDBAvailValue(pdb.NewMinAvailable), pdb.DisruptionsAllowed, patchStatus)
+				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, printPDBAvailValue(pdb.OldMaxUnavailable), printPDBAvailValue(pdb.NewMaxUnavailable), printPDBAvailValue(pdb.OldMinAvailable), printPDBAvailValue(pdb.NewMinAvailable), len(pdb.Pods), pdb.DisruptionsAllowed, patchStatus)
 			}
 		}
 
@@ -218,5 +236,5 @@ func init() {
 	patchCmd.Flags().Bool("no-headers", false, "Output without column headers (Default: False)")
 	patchCmd.Flags().Bool("show-no-pods", false, "Output PDB's that don't match any pods (Default: False)")
 	patchCmd.Flags().StringVarP(&outputFormatTmp, "output", "o", "", "Specify the output format. One of: json")
-	patchCmd.Flags().BoolVarP(&noop, "no-op", "", false, "Run command in a no-op mode. Information will be simulated, but not executed (Default: False)")
+	patchCmd.Flags().BoolVarP(&dryRun, "dry-run", "", false, "Run command in a no-op mode. Information will be simulated, but not executed (Default: False)")
 }

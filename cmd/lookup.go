@@ -111,7 +111,6 @@ var lookupCmd = &cobra.Command{
 			// Check if any pods match the Selectors from the PDB, skip iteration if not
 			if len(pods.Items) < 1 {
 				if !showNoPods {
-					fmt.Printf("No pods match this PDB...it shouldn't print: %v\n", pdb.Name)
 					continue
 				}
 			}
