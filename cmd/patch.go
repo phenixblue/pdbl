@@ -159,7 +159,7 @@ var patchCmd = &cobra.Command{
 				// Detect an appropriate non-blocking value and update the value
 				helpers.GetTargetPDBValue(currPDB.DisruptionsAllowed, "maxUnavailable", currPDB.OldMaxUnavailable, len(pods.Items))
 				// Define target value
-				value := intstr.FromString("%90")
+				value := intstr.FromString("90%")
 				currPDB.NewMaxUnavailable = value.StrVal
 				pdb.Spec.MaxUnavailable = &value
 
