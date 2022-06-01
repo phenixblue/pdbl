@@ -62,7 +62,7 @@ var listCmd = &cobra.Command{
 			}
 
 			currTime := time.Now()
-			pdbAge = currTime.Sub(pdb.GetCreationTimestamp().Time).Round(time.Second).String()
+			pdbAge = kube.GetPDBAge(currTime, pdb.GetCreationTimestamp().Time)
 
 			fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Namespace, pdb.Name, pdbMinAvailable, pdbMaxUnavailable, pdb.Status.DisruptionsAllowed, pdbAge)
 
