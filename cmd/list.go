@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"twr.dev/pdbl/pkg/helpers"
 	"twr.dev/pdbl/pkg/kube"
 	"twr.dev/pdbl/pkg/printers"
 )
@@ -62,7 +63,7 @@ var listCmd = &cobra.Command{
 			}
 
 			currTime := time.Now()
-			pdbAge = kube.GetPDBAge(currTime, pdb.GetCreationTimestamp().Time)
+			pdbAge = helpers.GetPDBAge(currTime, pdb.GetCreationTimestamp().Time)
 
 			fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Namespace, pdb.Name, pdbMinAvailable, pdbMaxUnavailable, pdb.Status.DisruptionsAllowed, pdbAge)
 
