@@ -30,5 +30,5 @@ type PDB struct {
 	NewMaxUnavailable  string   `json:"newMaxUnavailable,omitempty"`
 	OldMinAvailable    string   `json:"oldMinAvailable,omitempty"`
 	OldMaxUnavailable  string   `json:"oldMaxUnavailable,omitempty"`
-	PatchStatus        string   `json:"patchStatus,omitempty"`
+	PatchStatus        bool     `json:"patchStatus"`
 }

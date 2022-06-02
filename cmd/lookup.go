@@ -13,9 +13,9 @@ import (
 
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/spf13/cobra"
+	"twr.dev/pdbl/pkg/helpers"
 	"twr.dev/pdbl/pkg/kube"
 	"twr.dev/pdbl/pkg/printers"
 	"twr.dev/pdbl/pkg/resources"
@@ -83,7 +83,8 @@ var lookupCmd = &cobra.Command{
 		// Loop through PDB's
 		for _, pdb := range pdbList.Items {
 
-			var currPDB resources.PDB
+			// Convert k8s PDB to simple PDB
+			currPDB := helpers.GetSimplePDB(client, pdb, showNoPods)
 
 			// Check if No-Blocking Filter is specified. If it is, output all PDB's whether they're blocking or not
 			noBlockingFilter, err := cmd.Flags().GetBool("no-blocking")
@@ -97,32 +98,11 @@ var lookupCmd = &cobra.Command{
 				}
 			}
 
-			// Set LabelSelectors for pods to Selectors value from PDB
-			pdbSelectors := pdb.Spec.Selector.MatchLabels
-			pdblabels := labels.Set(pdbSelectors).String()
-
-			// Get a list of Pods that match the Selectors from the PDB
-			pods, err := client.CoreV1().Pods(pdb.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
-			if err != nil {
-				fmt.Printf("ERROR: Unable to lookup Pods: \n%v\n", err)
-				os.Exit(1)
-			}
-
-			// Check if any pods match the Selectors from the PDB, skip iteration if not
-			if len(pods.Items) < 1 {
+			// Check if any pods matches the Selectors from the PDB, skip iteration if not
+			if len(currPDB.Pods) < 1 {
 				if !showNoPods {
 					continue
 				}
-			}
-
-			currPDB.Name = pdb.Name
-			currPDB.Namespace = pdb.Namespace
-			currPDB.Selectors = pdblabels
-			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
-
-			// Loop through Pod list and print information for output
-			for _, pod := range pods.Items {
-				currPDB.Pods = append(currPDB.Pods, pod.Name)
 			}
 
 			pdbOutput.PDBs = append(pdbOutput.PDBs, currPDB)

@@ -12,10 +12,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	corev1 "k8s.io/api/core/v1"
 	policyv1beta1 "k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"twr.dev/pdbl/pkg/helpers"
 	"twr.dev/pdbl/pkg/kube"
@@ -27,7 +25,8 @@ var (
 	PDBLMaxUnavailableAnnotation = "pdbl.k8s.t-mobile.com/maxUnavailable-original"
 	PDBLMinAvailableAnnotation   = "pdbl.k8s.t-mobile.com/minAvailable-original"
 	dryRun                       bool
-	patchStatus                  string
+	isForced                     bool
+	runtimeStatus                string
 )
 
 // printPDBAvailValue takes a string formatted value from a PDB's "minAvailable" or "maxUnavailable" field and returns the value or "N/A"
@@ -41,13 +40,22 @@ func printPDBAvailValue(value string) string {
 
 // patchCmd represents the patch command
 var patchCmd = &cobra.Command{
-	Use:   "patch",
+	Use:   "patch [-n NAMESPACE NAME]",
 	Short: "Patch target Pod Disruption Budget (PDB) resources to prevent the blockage of cluster maintenance activities",
-	Long:  `Patch target Pod Disruption Budget (PDB) resources to prevent the blockage of cluster maintenance activities`,
+	Long: `Patch target Pod Disruption Budget (PDB) resources to prevent the blockage of cluster maintenance activities
+
+Examples:
+
+# Patch the "test-pdb1" in the "test1" namespace
+pdbl patch -n test1 test-pdb1
+
+# Patch all PDB's across all namespaces
+pdbl patch
+
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 		var (
 			pdbList        *policyv1beta1.PodDisruptionBudgetList
-			pods           *corev1.PodList
 			pdbListOptions metav1.ListOptions
 			pdbOutput      resources.PDBOutput
 			outputFormat   string
@@ -103,27 +111,17 @@ var patchCmd = &cobra.Command{
 		// Loop through PDB's
 		for _, pdb := range pdbList.Items {
 
-			var currPDB resources.PDB
-
-			// Set LabelSelectors for pods to Selectors value from PDB
-			pdbSelectors := pdb.Spec.Selector.MatchLabels
-			pdblabels := labels.Set(pdbSelectors).String()
-
 			// Assess if this is a no-op run
 			if dryRun {
 				dryRunOptions = metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}}
-				patchStatus = "(dry-run only)"
+				runtimeStatus = "(dry-run only)"
 			} else {
 				dryRunOptions = metav1.UpdateOptions{}
-				patchStatus = ("configured")
+				runtimeStatus = ("configured")
 			}
 
-			// Record current PDB info for use later
-			currPDB.Name = pdb.Name
-			currPDB.Namespace = pdb.Namespace
-			currPDB.Selectors = pdblabels
-			currPDB.DisruptionsAllowed = int(pdb.Status.DisruptionsAllowed)
-			currPDB.PatchStatus = patchStatus
+			// Convert k8s PDB to simple PDB
+			currPDB := helpers.GetSimplePDB(client, pdb, showNoPods)
 
 			// Check if No-Blocking Filter is specified. If it is, output all PDB's whether they're blocking or not
 			noBlockingFilter, err := cmd.Flags().GetBool("no-blocking")
@@ -137,15 +135,8 @@ var patchCmd = &cobra.Command{
 				}
 			}
 
-			// Get a list of Pods that match the Selectors from the PDB
-			pods, err = client.CoreV1().Pods(pdb.Namespace).List(context.TODO(), metav1.ListOptions{LabelSelector: pdblabels})
-			if err != nil {
-				fmt.Printf("ERROR: Unable to lookup Pods: \n%v\n", err)
-				os.Exit(1)
-			}
-
 			// Check if any pods matches the Selectors from the PDB, skip iteration if not
-			if len(pods.Items) < 1 {
+			if len(currPDB.Pods) < 1 {
 				if !showNoPods {
 					continue
 				}
@@ -157,7 +148,7 @@ var patchCmd = &cobra.Command{
 				// Set maxUnavailable annotation
 				pdb.ObjectMeta.Annotations[PDBLMaxUnavailableAnnotation] = currPDB.OldMaxUnavailable
 				// Detect an appropriate non-blocking value and update the value
-				helpers.GetTargetPDBValue(currPDB.DisruptionsAllowed, "maxUnavailable", currPDB.OldMaxUnavailable, len(pods.Items))
+				helpers.GetTargetPDBValue(isForced, "maxUnavailable", currPDB)
 				// Define target value
 				value := intstr.FromString("90%")
 				currPDB.NewMaxUnavailable = value.StrVal
@@ -177,7 +168,7 @@ var patchCmd = &cobra.Command{
 				// Set minAvailable annotation
 				pdb.ObjectMeta.Annotations[PDBLMinAvailableAnnotation] = currPDB.OldMinAvailable
 				// Detect an appropriate non-blocking value and update the value
-				helpers.GetTargetPDBValue(currPDB.DisruptionsAllowed, "minAvailable", currPDB.OldMinAvailable, len(pods.Items))
+				helpers.GetTargetPDBValue(isForced, "minAvailable", currPDB)
 				// Define target value
 				value := intstr.FromString("1%")
 				currPDB.NewMinAvailable = value.StrVal
@@ -193,18 +184,12 @@ var patchCmd = &cobra.Command{
 				pdb = *newPdb
 			}
 
-			// Loop through Pod list and print information for output
-			for _, pod := range pods.Items {
-				currPDB.Pods = append(currPDB.Pods, pod.Name)
-			}
-
 			// Append current PDB to list of PDB's we've processed
 			pdbOutput.PDBs = append(pdbOutput.PDBs, currPDB)
 
 		}
 
 		if outputFormat == "json" {
-
 			output, err := json.MarshalIndent(pdbOutput, "", "    ")
 			if err != nil {
 				fmt.Printf("ERROR: Problems marshaling output to JSON: %v\n", err)
@@ -212,7 +197,7 @@ var patchCmd = &cobra.Command{
 			fmt.Printf("%s\n", output)
 		} else {
 			for _, pdb := range pdbOutput.PDBs {
-				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, printPDBAvailValue(pdb.OldMaxUnavailable), printPDBAvailValue(pdb.NewMaxUnavailable), printPDBAvailValue(pdb.OldMinAvailable), printPDBAvailValue(pdb.NewMinAvailable), len(pdb.Pods), pdb.DisruptionsAllowed, patchStatus)
+				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, printPDBAvailValue(pdb.OldMaxUnavailable), printPDBAvailValue(pdb.NewMaxUnavailable), printPDBAvailValue(pdb.OldMinAvailable), printPDBAvailValue(pdb.NewMinAvailable), len(pdb.Pods), pdb.DisruptionsAllowed, runtimeStatus)
 			}
 		}
 
@@ -237,4 +222,5 @@ func init() {
 	patchCmd.Flags().Bool("show-no-pods", false, "Output PDB's that don't match any pods (Default: False)")
 	patchCmd.Flags().StringVarP(&outputFormatTmp, "output", "o", "", "Specify the output format. One of: json")
 	patchCmd.Flags().BoolVarP(&dryRun, "dry-run", "", false, "Run command in a no-op mode. Information will be simulated, but not executed (Default: False)")
+	patchCmd.Flags().BoolVarP(&isForced, "force", "f", false, "Force patching operations even if it will result in all pods down (Default: False)")
 }
