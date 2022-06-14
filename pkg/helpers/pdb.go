@@ -17,7 +17,7 @@ import (
 )
 
 // GetTargetPDBValue returns an appropriate value to set a PDB's maxUnavailable/MinAvailable field to be non-blocking for node operations
-func GetTargetPDBValue(forced bool, availabilityType string, pdb resources.PDB) {
+func GetTargetPDBValue(forced bool, availabilityType string, pdb resources.PDB) intstr.IntOrString {
 
 	var (
 		output             intstr.IntOrString
@@ -48,10 +48,9 @@ func GetTargetPDBValue(forced bool, availabilityType string, pdb resources.PDB) 
 	if numMatchedPods == 1 {
 		output = intstr.FromString("100%")
 		fmt.Printf("getTargetPDBValue - Only matches one pod: %v; New Value: %v\n", numMatchedPods, output.StrVal)
-	}
 
-	// Handle situations where there's a percentage
-	if lengthOfAvailabilityValue > 1 && string(availabilityValue[len(availabilityValue)-1]) == "%" {
+		// Handle situations where there's a percentage
+	} else if lengthOfAvailabilityValue > 1 && string(availabilityValue[len(availabilityValue)-1]) == "%" {
 
 		//newValue := (1 / 100) * numMatchedPods
 
@@ -77,6 +76,8 @@ func GetTargetPDBValue(forced bool, availabilityType string, pdb resources.PDB) 
 
 		//fmt.Println("getTargetPDBValue - Integer Value detected")
 	}
+
+	return output
 
 	/*
 

@@ -77,7 +77,7 @@ var lookupCmd = &cobra.Command{
 		defer w.Flush()
 
 		if !noHeaders && outputFormat != "json" {
-			fmt.Fprintln(w, "NAME\tNAMESPACE\tMATCHING PODS\tALLOWED DISRUPTIONS\tSELECTORS\t")
+			fmt.Fprintln(w, "NAME\tNAMESPACE\tMATCHING PODS\tALLOWED DISRUPTIONS\tPATCH STATUS\tSELECTORS\t")
 		}
 
 		// Loop through PDB's
@@ -118,7 +118,7 @@ var lookupCmd = &cobra.Command{
 			fmt.Printf("%s\n", output)
 		} else {
 			for _, pdb := range pdbOutput.PDBs {
-				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, len(pdb.Pods), pdb.DisruptionsAllowed, pdb.Selectors)
+				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, len(pdb.Pods), pdb.DisruptionsAllowed, pdb.PatchStatus, pdb.Selectors)
 			}
 		}
 

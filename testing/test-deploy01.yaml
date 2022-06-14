@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: test-deploy01
+  name: test-deploy01
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: test-deploy01
+  strategy: {}
+  template:
+    metadata:
+      labels:
+        app: test-deploy01
+    spec:
+      containers:
+      - image: jmsearcy/twrtools
+        name: twrtools
+        command:
+          - sleep
+          - "3600"
+        resources: {}
+status: {}

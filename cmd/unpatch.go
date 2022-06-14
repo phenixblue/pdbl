@@ -57,6 +57,8 @@ var unpatchCmd = &cobra.Command{
 
 		}
 
+		pdbListOptions.LabelSelector = metav1.LabelSelector{}.MatchLabels[PDBPatchLabel]
+
 		// Get a list of PDB resources
 		pdbList, err = client.PolicyV1beta1().PodDisruptionBudgets(namespace).List(context.TODO(), pdbListOptions)
 		if err != nil {
@@ -78,20 +80,11 @@ var unpatchCmd = &cobra.Command{
 		defer w.Flush()
 
 		if !noHeaders && outputFormat != "json" {
-			fmt.Fprintln(w, "NAME\tNAMESPACE\tMAX UNAVAILABLE OLD\tMAX UNAVAILABLE NEW\tMIN AVAILABLE OLD\tMIN AVAILABLE NEW\tNUMBER OF MATCHED PODS\tALLOWED DISRUPTIONS\tPATCH STATUS\t")
+			fmt.Fprintln(w, "PDB\tACTION\t")
 		}
 
 		// Loop through PDB's
 		for _, pdb := range pdbList.Items {
-
-			// Assess if this is a no-op run
-			if dryRun {
-				dryRunOptions = metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}}
-				runtimeStatus = "(dry-run only)"
-			} else {
-				dryRunOptions = metav1.UpdateOptions{}
-				runtimeStatus = ("configured")
-			}
 
 			// Convert k8s PDB to simple PDB
 			currPDB := helpers.GetSimplePDB(client, pdb, showNoPods)
@@ -115,6 +108,17 @@ var unpatchCmd = &cobra.Command{
 				}
 			}
 
+			// Assess if this is a no-op run
+			if dryRun {
+				dryRunOptions = metav1.UpdateOptions{DryRun: []string{metav1.DryRunAll}}
+				dryRunStatus = "(dry-run)"
+			} else {
+				dryRunOptions = metav1.UpdateOptions{}
+				dryRunStatus = ""
+			}
+
+			runtimeStatus = "configured"
+
 			// Check PDB to see if minAvailable or maxUnavailable is used (they're mutually exclusive)
 			if pdb.Spec.MaxUnavailable != nil {
 
@@ -123,7 +127,8 @@ var unpatchCmd = &cobra.Command{
 					// Set maxUnavailable annotation
 					pdb.ObjectMeta.Annotations[PDBLMaxUnavailableAnnotation] = currPDB.OldMaxUnavailable
 
-					// Remove annotation from PDB
+					// Remove patch annotation and label from PDB
+					delete(pdb.Labels, PDBPatchLabel)
 					delete(pdb.Annotations, PDBLMaxUnavailableAnnotation)
 
 					value := intstr.FromString(pdbAnnotationValue)
@@ -156,6 +161,7 @@ var unpatchCmd = &cobra.Command{
 					pdb.ObjectMeta.Annotations[PDBLMinAvailableAnnotation] = currPDB.OldMinAvailable
 
 					// Remove annotation from PDB
+					delete(pdb.Labels, PDBPatchLabel)
 					delete(pdb.Annotations, PDBLMinAvailableAnnotation)
 
 					value := intstr.FromString(pdbAnnotationValue)
@@ -195,7 +201,7 @@ var unpatchCmd = &cobra.Command{
 			fmt.Printf("%s\n", output)
 		} else {
 			for _, pdb := range pdbOutput.PDBs {
-				fmt.Fprintf(w, "%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t\n", pdb.Name, pdb.Namespace, printPDBAvailValue(pdb.OldMaxUnavailable), printPDBAvailValue(pdb.NewMaxUnavailable), printPDBAvailValue(pdb.OldMinAvailable), printPDBAvailValue(pdb.NewMinAvailable), len(pdb.Pods), pdb.DisruptionsAllowed, runtimeStatus)
+				fmt.Fprintf(w, "%v\t%v\t\n", pdb.Namespace+"/"+pdb.Name, runtimeStatus+" "+dryRunStatus)
 			}
 		}
 	},
@@ -213,4 +219,9 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// unpatchCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	unpatchCmd.Flags().BoolP("no-blocking", "b", false, "Assess all PDB's, not just those that are blocking (Default: False)")
+	unpatchCmd.Flags().Int16VarP(&blockingThreshold, "blocking-threshold", "t", 0, "Set the threshold for blocking PDB's. This number is the upper bound for \"Allowed Disruptions\" for a PDB (Default: 0)")
+	unpatchCmd.Flags().Bool("no-headers", false, "Output without column headers (Default: False)")
+	unpatchCmd.Flags().StringVarP(&outputFormatTmp, "output", "o", "", "Specify the output format. One of: json")
+	unpatchCmd.Flags().BoolVarP(&dryRun, "dry-run", "", false, "Run command in a no-op mode. Information will be simulated, but not executed (Default: False)")
 }

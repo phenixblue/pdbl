@@ -1,0 +1,17 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  creationTimestamp: null
+  name: test-pdb03
+  annotations:
+    pdb-description: "PDB with percentage maxUnavailable"
+spec:
+  maxUnavailable: "1%"
+  selector:
+    matchLabels:
+      app: test-deploy03
+status:
+  currentHealthy: 0
+  desiredHealthy: 0
+  disruptionsAllowed: 0
+  expectedPods: 0
