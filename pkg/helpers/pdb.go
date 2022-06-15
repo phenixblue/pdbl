@@ -21,7 +21,6 @@ func GetTargetPDBValue(forced bool, availabilityType string, pdb resources.PDB) 
 
 	var (
 		output             intstr.IntOrString
-		availabilityValue  string
 		numMatchedPods     int
 		forcedPercentValue intstr.IntOrString
 		forcedIntValue     intstr.IntOrString
@@ -29,52 +28,28 @@ func GetTargetPDBValue(forced bool, availabilityType string, pdb resources.PDB) 
 
 	numMatchedPods = len(pdb.Pods)
 
-	if availabilityType == "minAvailable" {
-		availabilityValue = pdb.OldMinAvailable
+	switch availabilityType {
+	case "minAvailable":
 		forcedIntValue = intstr.FromInt(1)
 		forcedPercentValue = intstr.FromString("0%")
-	} else if availabilityType == "maxUnavailable" {
-		availabilityValue = pdb.OldMaxUnavailable
+	case "maxUnavailable":
 		forcedIntValue = intstr.FromInt(numMatchedPods)
 		forcedPercentValue = intstr.FromString("100%")
-	} else {
+	default:
 		fmt.Printf("ERROR: Invalid availability type specified: %v\n", availabilityType)
 		os.Exit(1)
 	}
 
-	lengthOfAvailabilityValue := len(availabilityValue)
-
 	// Handle situations where there's only 1 replica
 	if numMatchedPods == 1 {
+		fmt.Println("Only patches 1 available pod")
 		output = intstr.FromString("100%")
-		fmt.Printf("getTargetPDBValue - Only matches one pod: %v; New Value: %v\n", numMatchedPods, output.StrVal)
-
-		// Handle situations where there's a percentage
-	} else if lengthOfAvailabilityValue > 1 && string(availabilityValue[len(availabilityValue)-1]) == "%" {
-
-		//newValue := (1 / 100) * numMatchedPods
-
-		if forced {
-			output = forcedPercentValue
-		}
-
-		// Set to new target value
-		//TODO: Need to detect availability type in order to calculate appropriate value
-		//output = intstr.FromString(strconv.Itoa(newValue) + "%")
-		//fmt.Println("getTargetPDBValue - Percent Value detected")
-
-		// Handle situations where there's an integer
+	} else if isPercent(availabilityType, pdb) {
+		fmt.Println("Is a percent")
+		output = forcedPercentValue
 	} else {
-
-		if forced {
-			output = forcedIntValue
-		}
-
-		// Set to new target value
-		//TODO: Need to detect availability type in order to calculate appropriate value
-		//output = intstr.FromString(strconv.Itoa(newValue))
-
-		//fmt.Println("getTargetPDBValue - Integer Value detected")
+		fmt.Println("Is an int")
+		output = forcedIntValue
 	}
 
 	return output
@@ -166,4 +141,32 @@ func GetPDBAge(currTime time.Time, pdbTime time.Time) string {
 	}
 
 	return output
+}
+
+// isPercent checks if the availability value of a PDB is a percentage or not
+func isPercent(availabilityType string, pdb resources.PDB) bool {
+
+	var availabilityValue string
+	var lengthOfAvailabilityValue int
+
+	output := false
+
+	switch availabilityType {
+	case "minAvailable":
+		availabilityValue = pdb.OldMinAvailable
+		lengthOfAvailabilityValue = len(availabilityValue)
+	case "maxUnavailable":
+		availabilityValue = pdb.OldMaxUnavailable
+		lengthOfAvailabilityValue = len(availabilityValue)
+	}
+
+	fmt.Printf("Availability Value: %v\n", availabilityValue)
+	fmt.Printf("Last character: %v\n", string(availabilityValue[lengthOfAvailabilityValue-1]))
+	if lengthOfAvailabilityValue > 1 && string(availabilityValue[lengthOfAvailabilityValue-1]) == "%" {
+		fmt.Println("Matched percent logic")
+		output = true
+	}
+
+	return output
+
 }

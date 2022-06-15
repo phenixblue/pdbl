@@ -89,18 +89,6 @@ var unpatchCmd = &cobra.Command{
 			// Convert k8s PDB to simple PDB
 			currPDB := helpers.GetSimplePDB(client, pdb, showNoPods)
 
-			// Check if No-Blocking Filter is specified. If it is, output all PDB's whether they're blocking or not
-			noBlockingFilter, err := cmd.Flags().GetBool("no-blocking")
-			if err != nil {
-				fmt.Printf("ERROR: Unable to read argument passed to \"no-blocking\" flag: %v", err)
-				os.Exit(1)
-			}
-			if !noBlockingFilter {
-				if pdb.Status.DisruptionsAllowed > int32(blockingThreshold) {
-					continue
-				}
-			}
-
 			// Check if any pods matches the Selectors from the PDB, skip iteration if not
 			if len(currPDB.Pods) < 1 {
 				if !showNoPods {
@@ -121,9 +109,7 @@ var unpatchCmd = &cobra.Command{
 
 			// Check PDB to see if minAvailable or maxUnavailable is used (they're mutually exclusive)
 			if pdb.Spec.MaxUnavailable != nil {
-
 				if pdbAnnotationValue, ok := pdb.ObjectMeta.Annotations[PDBLMaxUnavailableAnnotation]; ok {
-
 					// Set maxUnavailable annotation
 					pdb.ObjectMeta.Annotations[PDBLMaxUnavailableAnnotation] = currPDB.OldMaxUnavailable
 
@@ -154,9 +140,7 @@ var unpatchCmd = &cobra.Command{
 				currPDB.OldMaxUnavailable = pdb.Spec.MaxUnavailable.StrVal
 
 			} else if pdb.Spec.MinAvailable != nil {
-
 				if pdbAnnotationValue, ok := pdb.ObjectMeta.Annotations[PDBLMinAvailableAnnotation]; ok {
-
 					// Set MinAvailable annotation
 					pdb.ObjectMeta.Annotations[PDBLMinAvailableAnnotation] = currPDB.OldMinAvailable
 
@@ -222,6 +206,7 @@ func init() {
 	unpatchCmd.Flags().BoolP("no-blocking", "b", false, "Assess all PDB's, not just those that are blocking (Default: False)")
 	unpatchCmd.Flags().Int16VarP(&blockingThreshold, "blocking-threshold", "t", 0, "Set the threshold for blocking PDB's. This number is the upper bound for \"Allowed Disruptions\" for a PDB (Default: 0)")
 	unpatchCmd.Flags().Bool("no-headers", false, "Output without column headers (Default: False)")
+	unpatchCmd.Flags().Bool("show-no-pods", false, "Output PDB's that don't match any pods (Default: False)")
 	unpatchCmd.Flags().StringVarP(&outputFormatTmp, "output", "o", "", "Specify the output format. One of: json")
 	unpatchCmd.Flags().BoolVarP(&dryRun, "dry-run", "", false, "Run command in a no-op mode. Information will be simulated, but not executed (Default: False)")
 }
